@@ -1,37 +1,33 @@
 import { Router } from "express";
-import upload from "../multer/configUpload.js";
-import multer from "multer";
+
+import File from "../models/File.js";
+import handleUpload from "../middleware/uploadMiddleware.js";
+import generateLinkDownload from "../helpers/generateLinkDownload.js";
 
 const router = Router();
 
-router.post("/files", (req, res) => {
-  upload.single("file")(req, res, (err) => {
-    if (err instanceof multer.MulterError) {
-      if (err.code == "LIMIT_FILE_SIZE") {
-        return res
-          .status(400)
-          .json({ message: "Arquivo muito grande. Máximo permitido: 5MB" });
-      }
-      return res.status(400).json({ message: err.message });
-    } else if (err) {
-      return res.status(400).json({ message: err.message });
-    }
+router.post("/files", handleUpload, async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: "Nenhum arquivo foi selecionado" });
+  }
 
-    if (!req.file) {
-      return res
-        .status(400)
-        .json({ message: "Nenhum arquivo foi selecionado" });
-    }
-    res.status(201).json({
-      message: "Arquivo enviado com sucesso",
-      file: {
-        orginalName: req.file.originalname,
-        mimeType: req.file.mimetype,
-        size: req.file.size,
-        path: req.file.path,
-      },
-    });
+  const expireAtUpload = new Date();
+  expireAtUpload.setDate(expireAtUpload.getDate() + 1);
+
+  const linkId = generateLinkDownload(req);
+
+  await File.create({
+    userId: "Teste",
+    filename: req.file.filename,
+    originalName: req.file.originalname,
+    size: req.file.size,
+    mimeType: req.file.mimetype,
+    expireAt: expireAtUpload,
+    linkId: linkId,
   });
+  res
+    .status(201)
+    .json({ message: `Arquivo ${req.file.originalname} enviado com sucesso` });
 });
 
 router.get("/files/:linkId", (req, res) => {
