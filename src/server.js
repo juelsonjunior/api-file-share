@@ -12,7 +12,7 @@ app.use(Routes);
 
 connectBd
   .then(() => {
-    app.listen(PORT, () =>
+    app.listen(port, () =>
       console.log(`Servidor rodando na porta http://localhost:${port}`)
     );
   })
