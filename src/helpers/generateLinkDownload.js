@@ -1,14 +1,14 @@
 export default function generateLinkDownload(req) {
   let chars = "123456789abcdefghijklmnopqrstuvwxyz";
-  let randomChars = "";
+  let linkId = "";
 
   for (let i = 0; i < 5; i++) {
     const randomIndex = Math.floor(Math.random() * chars.length);
-    randomChars += chars[randomIndex];
+    linkId += chars[randomIndex];
   }
 
   const baseUrl = `${req.protocol}://${req.get("host")}`;
-  const linkId = `${baseUrl}/download/${randomChars}`;
+  const downloadUrl = `${baseUrl}/files/${linkId}`;
 
-  return linkId;
+  return { linkId, downloadUrl };
 }
