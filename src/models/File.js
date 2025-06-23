@@ -27,7 +27,7 @@ const fileSchema = new mongoose.Schema({
   },
   isPublic: {
     type: Boolean,
-    default: true,
+    required: true,
   },
   expireAt: {
     type: Date,
@@ -35,6 +35,10 @@ const fileSchema = new mongoose.Schema({
   downloadCount: {
     type: Number,
     default: 0,
+  },
+  shareLink: {
+    type: String,
+    required: true,
   },
   linkId: {
     type: String,
