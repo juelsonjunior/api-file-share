@@ -21,7 +21,7 @@ router.post("/files", handleUpload, async (req, res) => {
   const { linkId } = generateLinkDownload(req);
 
   await File.create({
-    userId: "Teste",
+    userId: req.user.id,
     filename: req.file.filename,
     originalName: req.file.originalname,
     size: req.file.size,
