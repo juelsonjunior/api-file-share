@@ -50,12 +50,10 @@ router.post("/files", handleUpload, async (req, res) => {
 
   if (newTotalStorageUser > userOn.storageLimit) {
     await fs.unlink(file.path);
-    return res
-      .status(400)
-      .json({
-        message:
-          "Você atingiu seu limite de armazenamento. Delete arquivos antigos para liberar espaço.",
-      });
+    return res.status(400).json({
+      message:
+        "Esse upload excede o teu limite de armazenamento. Delete arquivos antigos para liberar espaço.",
+    });
   }
 
   const { linkId, downloadUrl } = generateLinkDownload(req);
