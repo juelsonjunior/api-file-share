@@ -3,35 +3,51 @@ import { Router } from "express";
 import File from "../models/File.js";
 import handleUpload from "../middleware/uploadMiddleware.js";
 import generateLinkDownload from "../helpers/generateLinkDownload.js";
+
 import { fileURLToPath } from "url";
 import path from "path";
+import fs from "fs/promises";
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 router.post("/files", handleUpload, async (req, res) => {
-  if (!req.file) {
+  const file = req.file;
+  const { expireAt } = req.body;
+  let expireAtUpload = null;
+  if (!file) {
     return res.status(400).json({ message: "Nenhum arquivo foi selecionado" });
   }
+  if (expireAt) {
+    expireAtUpload = new Date(expireAt);
 
-  const expireAtUpload = new Date();
-  expireAtUpload.setDate(expireAtUpload.getDate() + 1);
+    if (isNaN(expireAtUpload.getTime())) {
+      await fs.unlink(file.path);
+      return res.status(400).json({ message: "Data de expiração inválida" });
+    }
+
+    if (expireAtUpload <= new Date()) {
+      await fs.unlink(file.path);
+      return res.status(400).json({
+        message:
+          "A data de expiração não pode ser menor ou igual a data de upload",
+      });
+    }
+  }
 
   const { linkId } = generateLinkDownload(req);
 
-  await File.create({
+  const newFile = await File.create({
     userId: req.user.id,
-    filename: req.file.filename,
-    originalName: req.file.originalname,
-    size: req.file.size,
-    mimeType: req.file.mimetype,
+    filename: file.filename,
+    originalName: file.originalname,
+    size: file.size,
+    mimeType: file.mimetype,
     expireAt: expireAtUpload,
     linkId: linkId,
   });
-  res
-    .status(201)
-    .json({ message: `Arquivo ${req.file.originalname} enviado com sucesso` });
+  res.status(201).json({ message: `Arquivo enviado com sucesso`, newFile });
 });
 
 router.get("/files/:linkId", async (req, res) => {
