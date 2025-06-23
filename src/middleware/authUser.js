@@ -8,11 +8,18 @@ export const authenticateUser = (req, res, next) => {
   try {
     const token = req.headers.authorization;
 
-    if (token) {
-      return res.status(400).json({ message: "Você não tem acesso a essa area" });
+    if (!token) {
+      return res
+        .status(400)
+        .json({ message: "Você não tem acesso a essa area" });
     }
 
-    const cleanToken = token.split(" ")[1];
+    const partsToken = token.split(" ");
+    if (partsToken.length !== 2 || partsToken[0] !== "Bearer") {
+      return res.status(400).json({ message: "Token mal formatado" });
+    }
+
+    const cleanToken = partsToken[1];
     const payload = jwt.verify(cleanToken, JWTSECRET);
 
     req.user = payload;
