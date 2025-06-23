@@ -15,7 +15,7 @@ const userSchema = new mongoose.Schema({
   },
   storageUsed: {
     type: Number,
-    required: true,
+    default: 0,
   },
   storageLimit: {
     type: Number,
