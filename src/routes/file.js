@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import File from "../models/File.js";
+import User from "../models/User.js";
 import handleUpload from "../middleware/uploadMiddleware.js";
 import generateLinkDownload from "../helpers/generateLinkDownload.js";
 
@@ -14,11 +15,18 @@ const __dirname = path.dirname(__filename);
 
 router.post("/files", handleUpload, async (req, res) => {
   const file = req.file;
-  const { expireAt } = req.body;
+  const { expireAt, isPublic } = req.body;
   let expireAtUpload = null;
   if (!file) {
     return res.status(400).json({ message: "Nenhum arquivo foi selecionado" });
   }
+
+  if (typeof isPublic === "undefined") {
+    return res.status(400).json({
+      message: "Você precisa informar se o link será público ou privado",
+    });
+  }
+
   if (expireAt) {
     expireAtUpload = new Date(expireAt);
 
@@ -36,7 +44,21 @@ router.post("/files", handleUpload, async (req, res) => {
     }
   }
 
-  const { linkId } = generateLinkDownload(req);
+  const userOn = await User.findOne({ _id: req.user.id });
+
+  const newTotalStorageUser = userOn.storageUsed + file.size;
+
+  if (newTotalStorageUser > userOn.storageLimit) {
+    await fs.unlink(file.path);
+    return res
+      .status(400)
+      .json({
+        message:
+          "Você atingiu seu limite de armazenamento. Delete arquivos antigos para liberar espaço.",
+      });
+  }
+
+  const { linkId, downloadUrl } = generateLinkDownload(req);
 
   const newFile = await File.create({
     userId: req.user.id,
@@ -44,9 +66,18 @@ router.post("/files", handleUpload, async (req, res) => {
     originalName: file.originalname,
     size: file.size,
     mimeType: file.mimetype,
+    isPublic: isPublic,
     expireAt: expireAtUpload,
+    shareLink: downloadUrl,
     linkId: linkId,
   });
+
+  await User.findByIdAndUpdate(
+    { _id: req.user.id },
+    {
+      inc: { storageUsed: file.size },
+    }
+  );
   res.status(201).json({ message: `Arquivo enviado com sucesso`, newFile });
 });
 
@@ -66,7 +97,7 @@ router.get("/files/:linkId", async (req, res) => {
   }
 
   if (
-    findLinkDownload.expireAt &&
+    findLinkDownload.expireAt != null &&
     new Date() > new Date(findLinkDownload.expireAt)
   ) {
     return res.status(400).json({ message: "O link fornecido está expirado" });
@@ -79,9 +110,33 @@ router.get("/files/:linkId", async (req, res) => {
     findLinkDownload.filename
   );
 
+  console.log("Dados do user logado: ", req.user);
+
+  if (!findLinkDownload.isPublic) {
+    if (!req.user) {
+      return res.status(401).json({
+        message: "Login necessário para baixar este arquivo privado.",
+      });
+    }
+
+    const findUserOn = await User.findOne({ _id: req.user.id });
+
+    if (!findUserOn) {
+      return res
+        .status(404)
+        .json({ message: "Usuário não autenticado, Faça login!" });
+    }
+
+    if (findLinkDownload.userId.toString() !== req.user.id) {
+      return res
+        .status(403)
+        .json({ message: "Você não tem permissão para baixar este arquivo." });
+    }
+  }
+
   return res.download(filePath, findLinkDownload.originalName, async (err) => {
     if (err) {
-      res.status(400).json({ messege: "Erro aoenviar o arquivo" });
+      res.status(400).json({ messege: "Erro ao enviar o arquivo" });
       console.log("Erro ao enviar o arquivo", err);
     }
 
