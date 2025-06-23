@@ -3,8 +3,12 @@ import { Router } from "express";
 import File from "../models/File.js";
 import handleUpload from "../middleware/uploadMiddleware.js";
 import generateLinkDownload from "../helpers/generateLinkDownload.js";
+import { fileURLToPath } from "url";
+import path from "path";
 
 const router = Router();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 router.post("/files", handleUpload, async (req, res) => {
   if (!req.file) {
@@ -14,7 +18,7 @@ router.post("/files", handleUpload, async (req, res) => {
   const expireAtUpload = new Date();
   expireAtUpload.setDate(expireAtUpload.getDate() + 1);
 
-  const linkId = generateLinkDownload(req);
+  const { linkId } = generateLinkDownload(req);
 
   await File.create({
     userId: "Teste",
@@ -30,10 +34,45 @@ router.post("/files", handleUpload, async (req, res) => {
     .json({ message: `Arquivo ${req.file.originalname} enviado com sucesso` });
 });
 
-router.get("/files/:linkId", (req, res) => {
-  res
-    .status(200)
-    .json({ messag: "Download de arquivo (link público ou protegido)" });
+router.get("/files/:linkId", async (req, res) => {
+  const { linkId } = req.params;
+
+  if (!linkId) {
+    return res
+      .status(400)
+      .json({ message: "Precisa passar um link válido para download" });
+  }
+
+  const findLinkDownload = await File.findOne({ linkId });
+
+  if (!findLinkDownload) {
+    return res.status(400).json({ message: "Link não encontrado" });
+  }
+
+  if (
+    findLinkDownload.expireAt &&
+    new Date() > new Date(findLinkDownload.expireAt)
+  ) {
+    return res.status(400).json({ message: "O link fornecido está expirado" });
+  }
+
+  const filePath = path.resolve(
+    __dirname,
+    "..",
+    "uploads",
+    findLinkDownload.filename
+  );
+
+  return res.download(filePath, findLinkDownload.originalName, async (err) => {
+    if (err) {
+      res.status(400).json({ messege: "Erro aoenviar o arquivo" });
+      console.log("Erro ao enviar o arquivo", err);
+    }
+
+    await File.findByIdAndUpdate(findLinkDownload._id, {
+      $inc: { downloadCount: 1 },
+    });
+  });
 });
 
 router.delete("/files/:id", (req, res) => {
