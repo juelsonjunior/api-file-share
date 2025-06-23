@@ -75,7 +75,7 @@ router.post("/files", handleUpload, async (req, res) => {
   await User.findByIdAndUpdate(
     { _id: req.user.id },
     {
-      inc: { storageUsed: file.size },
+      $inc: { storageUsed: file.size },
     }
   );
   res.status(201).json({ message: `Arquivo enviado com sucesso`, newFile });
