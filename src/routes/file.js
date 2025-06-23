@@ -144,8 +144,58 @@ router.get("/files/:linkId", async (req, res) => {
   });
 });
 
-router.delete("/files/:id", (req, res) => {
-  res.status(200).json({ messag: "Deletar arquivo do usuário" });
+router.delete("/files/:id", async (req, res) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ message: "Precisa passar um id válido" });
+  }
+
+  try {
+    const userOn = await User.findOne({ _id: req.user.id });
+
+    if (!userOn) {
+      return res.status(400).json({
+        message: "Você precisa estar autenticado para deletar esse arquivo",
+      });
+    }
+
+    const findFile = await File.findById({ _id: id });
+
+    if (!findFile) {
+      return res
+        .status(400)
+        .json({ message: "Arquivo não encontrado, Tente novamente" });
+    }
+
+    if (findFile.userId.toString() != req.user.id) {
+      return res
+        .status(400)
+        .json({ message: "Você não tem permissão de deletar esse arquivo" });
+    }
+
+    await findFile.deleteOne();
+
+    const filePath = path.resolve(
+      __dirname,
+      "..",
+      "uploads",
+      findFile.filename
+    );
+
+    try {
+      await fs.stat(filePath);
+      await fs.unlink(filePath);
+    } catch (err) {
+      if (err.code != "ENOENT") {
+        throw err;
+      }
+    }
+    res.status(200).json({ message: "Arquivo deletado" });
+  } catch (error) {
+    res.status(500).json({ message: "Falha no servidor" });
+    console.log(error);
+  }
 });
 
 router.get("/files/:files", (req, res) => {
