@@ -4,82 +4,62 @@ import File from "../models/File.js";
 import User from "../models/User.js";
 import handleUpload from "../middleware/uploadMiddleware.js";
 import generateLinkDownload from "../helpers/generateLinkDownload.js";
+import { chekStorageLimit } from "../middleware/checkStorageLimit.js";
 
 import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs/promises";
+import { validateExpireAt } from "../middleware/validateExpireAt.js";
+import { checkUser } from "../middleware/checkUser.js";
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-router.post("/files", handleUpload, async (req, res) => {
-  const file = req.file;
-  const { expireAt, isPublic } = req.body;
-  let expireAtUpload = null;
-  if (!file) {
-    return res.status(400).json({ message: "Nenhum arquivo foi selecionado" });
-  }
+router.post(
+  "/files",
+  handleUpload,
+  validateExpireAt,
+  chekStorageLimit,
+  async (req, res) => {
+    const file = req.file;
+    const { isPublic } = req.body;
+    let expireAtUpload = null;
+    if (!file) {
+      return res
+        .status(400)
+        .json({ message: "Nenhum arquivo foi selecionado" });
+    }
 
-  if (typeof isPublic === "undefined") {
-    return res.status(400).json({
-      message: "Você precisa informar se o link será público ou privado",
+    const isPublicValue = isPublic === "true";
+
+    const { linkId, downloadUrl } = generateLinkDownload(req);
+
+    const newFile = await File.create({
+      userId: req.user.id,
+      filename: file.filename,
+      originalName: file.originalname,
+      size: file.size,
+      mimeType: file.mimetype,
+      isPublic: isPublicValue,
+      expireAt: req.expireAtUpload,
+      shareLink: downloadUrl,
+      linkId: linkId,
     });
+
+    await User.findByIdAndUpdate(
+      { _id: req.user.id },
+      {
+        $inc: { storageUsed: file.size },
+      }
+    );
+    res
+      .status(201)
+      .json({ message: `Arquivo enviado com sucesso`, files: newFile });
   }
+);
 
-  if (expireAt) {
-    expireAtUpload = new Date(expireAt);
-
-    if (isNaN(expireAtUpload.getTime())) {
-      await fs.unlink(file.path);
-      return res.status(400).json({ message: "Data de expiração inválida" });
-    }
-
-    if (expireAtUpload <= new Date()) {
-      await fs.unlink(file.path);
-      return res.status(400).json({
-        message:
-          "A data de expiração não pode ser menor ou igual a data de upload",
-      });
-    }
-  }
-
-  const userOn = await User.findOne({ _id: req.user.id });
-
-  const newTotalStorageUser = userOn.storageUsed + file.size;
-
-  if (newTotalStorageUser > userOn.storageLimit) {
-    await fs.unlink(file.path);
-    return res.status(400).json({
-      message:
-        "Esse upload excede o teu limite de armazenamento. Delete arquivos antigos para liberar espaço.",
-    });
-  }
-
-  const { linkId, downloadUrl } = generateLinkDownload(req);
-
-  const newFile = await File.create({
-    userId: req.user.id,
-    filename: file.filename,
-    originalName: file.originalname,
-    size: file.size,
-    mimeType: file.mimetype,
-    isPublic: isPublic,
-    expireAt: expireAtUpload,
-    shareLink: downloadUrl,
-    linkId: linkId,
-  });
-
-  await User.findByIdAndUpdate(
-    { _id: req.user.id },
-    {
-      $inc: { storageUsed: file.size },
-    }
-  );
-  res.status(201).json({ message: `Arquivo enviado com sucesso`, newFile });
-});
-
-router.get("/files/:linkId", async (req, res) => {
+router.get("/files/:linkId", checkUser, async (req, res) => {
   const { linkId } = req.params;
 
   if (!linkId) {
@@ -91,7 +71,7 @@ router.get("/files/:linkId", async (req, res) => {
   const findLinkDownload = await File.findOne({ linkId });
 
   if (!findLinkDownload) {
-    return res.status(400).json({ message: "Link não encontrado" });
+    return res.status(404).json({ message: "Link não encontrado" });
   }
 
   if (
@@ -108,23 +88,7 @@ router.get("/files/:linkId", async (req, res) => {
     findLinkDownload.filename
   );
 
-  console.log("Dados do user logado: ", req.user);
-
   if (!findLinkDownload.isPublic) {
-    if (!req.user) {
-      return res.status(401).json({
-        message: "Login necessário para baixar este arquivo privado.",
-      });
-    }
-
-    const findUserOn = await User.findOne({ _id: req.user.id });
-
-    if (!findUserOn) {
-      return res
-        .status(404)
-        .json({ message: "Usuário não autenticado, Faça login!" });
-    }
-
     if (findLinkDownload.userId.toString() !== req.user.id) {
       return res
         .status(403)
@@ -152,29 +116,16 @@ router.delete("/files/:id", async (req, res) => {
   }
 
   try {
-    const userOn = await User.findOne({ _id: req.user.id });
-
-    if (!userOn) {
-      return res.status(400).json({
-        message: "Você precisa estar autenticado para deletar esse arquivo",
-      });
-    }
-
-    const findFile = await File.findById({ _id: id });
+    const findFile = await File.findOneAndDelete({
+      _id: id,
+      userId: req.user.id,
+    });
 
     if (!findFile) {
       return res
         .status(400)
-        .json({ message: "Arquivo não encontrado, Tente novamente" });
+        .json({ message: "Arquivo não encontrado ou sem permissão" });
     }
-
-    if (findFile.userId.toString() != req.user.id) {
-      return res
-        .status(400)
-        .json({ message: "Você não tem permissão de deletar esse arquivo" });
-    }
-
-    await findFile.deleteOne();
 
     const filePath = path.resolve(
       __dirname,
@@ -209,9 +160,15 @@ router.get("/files", async (req, res) => {
   if (findFile.length == 0) {
     return res
       .status(200)
-      .json({ message: "Você ainda não tem arquivos", arquivos: [] });
+      .json({ message: "Você ainda não tem arquivos", files: [] });
   }
-  res.status(200).json({ message: "Seus arquivos", files: findFile });
+  res
+    .status(200)
+    .json({
+      message: "Seus arquivos",
+      total: findFile.length,
+      files: findFile,
+    });
 });
 
 router.get("/files/:id/info", (req, res) => {
