@@ -198,8 +198,20 @@ router.delete("/files/:id", async (req, res) => {
   }
 });
 
-router.get("/files/:files", (req, res) => {
-  res.status(200).json({ messag: "Listar arquivos do usuário logado" });
+router.get("/files", async (req, res) => {
+  if (!req.user) {
+    return res
+      .status(401)
+      .json({ message: "Login necessário para listar arquivos." });
+  }
+  const findFile = await File.find({ userId: req.user.id });
+
+  if (findFile.length == 0) {
+    return res
+      .status(200)
+      .json({ message: "Você ainda não tem arquivos", arquivos: [] });
+  }
+  res.status(200).json({ message: "Seus arquivos", files: findFile });
 });
 
 router.get("/files/:id/info", (req, res) => {
