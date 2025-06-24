@@ -10,7 +10,6 @@ import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs/promises";
 import { validateExpireAt } from "../middleware/validateExpireAt.js";
-import { checkUser } from "../middleware/checkUser.js";
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -59,7 +58,7 @@ router.post(
   }
 );
 
-router.get("/files/:linkId", checkUser, async (req, res) => {
+router.get("/files/:linkId", async (req, res) => {
   const { linkId } = req.params;
 
   if (!linkId) {
