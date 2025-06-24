@@ -154,6 +154,7 @@ router.get("/files", async (req, res) => {
       .status(401)
       .json({ message: "Login necessário para listar arquivos." });
   }
+
   const findFile = await File.find({ userId: req.user.id });
 
   if (findFile.length == 0) {
@@ -161,18 +162,34 @@ router.get("/files", async (req, res) => {
       .status(200)
       .json({ message: "Você ainda não tem arquivos", files: [] });
   }
-  res
-    .status(200)
-    .json({
-      message: "Seus arquivos",
-      total: findFile.length,
-      files: findFile,
-    });
+  res.status(200).json({
+    message: "Seus arquivos",
+    total: findFile.length,
+    files: findFile,
+  });
 });
 
-router.get("/files/:id/info", (req, res) => {
-  res
-    .status(200)
-    .json({ messag: "Ver informações e logs de download do arquivo" });
+router.get("/files/:id/info", async (req, res) => {
+  const { id } = req.params;
+
+  if (!req.user) {
+    return res
+      .status(401)
+      .json({ message: "Login necessário para listar arquivos." });
+  }
+
+  if (!id) {
+    return res.status(400).json({ message: "Precisa passar um id válido" });
+  }
+
+  const file = await File.findById({ _id: id });
+
+  if (!file || file.userId.toString() != req.user.id) {
+    return res.status(404).json({
+      message: "Nenhum arquivo foi encontrado ou você não tem permissão.",
+    });
+  }
+
+  res.status(200).json({ message: "Informações do arquivo", data: file });
 });
 export default router;
