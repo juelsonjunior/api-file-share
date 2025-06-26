@@ -102,6 +102,7 @@ Esta API permite que usuários autenticados façam upload de arquivos, gerem lin
 - **JWT** + **bcrypt** — Autenticação e segurança
 - **Node-cron** — Agendamento de tarefas (deleção de arquivos expirados)
 - **File System** — Os arquivos são armazenados localmente no servidor.
+- **Docker + Docker Compose** — Containerização da aplicação e orquestração de ambiente (API + dependências)
 
 ---
 
